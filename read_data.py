@@ -37,7 +37,7 @@ def adjust_budget(data):
     this_year = 2017
 
     # adjust for future value of movie (inflation)
-    data['budget'] = data['budget'] / avg_inflation_rate * ((1 + avg_inflation_rate) ** (this_year - data['title_year']) - 1)
+    data['budget'] = data['budget'] * ((1 + avg_inflation_rate) ** (this_year - data['title_year']))
     
     # scale to unit stddev and 0 mean
     data['budget'] = (data['budget'] - data['budget'].mean()) / data['budget'].std()
@@ -79,7 +79,7 @@ def categorize_genres(data):
     genres = ['Biography', 'Fantasy', 'Horror', 'Romance', 'Family', 
               'Sport', 'Mystery', 'Short', 'Music', 'Documentary', 
               'Sci-Fi', 'Crime', 'Drama', 'Thriller', 'Western', 'Comedy',
-              'Musical', 'Action', 'Adventure', 'History', 'Animation', 'War' ]
+              'Musical', 'Action', 'Adventure', 'History', 'Animation', 'War']
 
     # data['genres'] is now a list of strings, for each genre, check if that genre is in the list
     data['genres'] = data['genres'].apply(lambda x: x.split('|'))
@@ -106,9 +106,11 @@ def categorize_directors(data):
     
     # List of tuples of (director_name, count_of_movies) 
     director_to_movies = [(director, len(movies)) for (director, movies) in g.groups.items()]
+
+    # sorts in descending order by count of movies
     director_to_movies.sort(key=lambda x: x[1], reverse=True)
 
-    # top 50 directors
+    # top 50 directors by count of movies
     top_directors = [director for (director, _) in director_to_movies[0:50]]
 
     categorize(data, top_directors, 'director_name')
