@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import sklearn as skl
 
 def read_to_dataframe(file_location):
     data = pd.read_csv(file_location, index_col=False)
@@ -18,19 +19,22 @@ def read_to_dataframe(file_location):
 
     return data
 
+
 def adjust_imdb_score(data):
     max_imdb_score = 10
 
     # scales to a range between zero and one, while still preserving distances/variance
     data['imdb_score'] = data['imdb_score'] / max_imdb_score
 
+
 def adjust_budget(data):
+
+    convert_to_usd(data)
 
     # the average inflation rate over the last 100 years
     avg_inflation_rate = .0318
     
-    # fill any data with missing values using means of columns
-    data['budget'].fillna(data['budget'].mean(), inplace=True)
+    # fill data with missing values using means of columns
     data['title_year'].fillna(data['title_year'].mean(), inplace=True)
 
     # used for inflation calculation
@@ -39,8 +43,60 @@ def adjust_budget(data):
     # adjust for future value of movie (inflation)
     data['budget'] = data['budget'] * ((1 + avg_inflation_rate) ** (this_year - data['title_year']))
     
+    #data['budget_after_inflation_adjustment'] = data['budget']
+
     # scale to unit stddev and 0 mean
     data['budget'] = (data['budget'] - data['budget'].mean()) / data['budget'].std()
+
+
+def convert_to_usd(data):
+
+    # usd / coversion currency
+    conversion = {
+        'USA': 1, # usd
+        'UK': .79, # pounds
+        'New Zealand': 1.49, # nz dollars
+        'Canada': 1.28, # canadian dollar
+        'Australia': 1.3, # australian dollar
+        'Belgium': .86, # euro
+        'Japan': 113.67, # yen
+        'Germany': .86, # euro
+        'China': 6.66, # yuan
+        'France': .86, # euro
+        'Mexico': 19.14, # mexican peso
+        'Spain': .86, #euro
+        'Hong Kong': 7.8, #hong kong dollar
+        'Czech Republic': 22.07, # koruna
+        'India': 64.89, #rupee
+        'South Korea': 1125.97, #won
+        'Italy': .86, #euro
+        'Russia': 58.03, #ruble
+        'Denmark': .16, #krone
+        'Ireland': .86, #euro
+        'South Africa': 14.14, #rand
+        'Iceland': 105.49, #krona
+        'Switzerland': 1, # franc
+        'Romania': 3.96, # leu
+        'Thailand': 33.23, #bat
+        'Iran': 34489, # rhal
+        'Poland': 3.66, # zloty
+        'Brazil': 3.24, # real
+        'Argentina': 17.6, # argentine peso
+        'Israel': 3.54 # new shekel
+    }
+
+    def update_currency(row):
+        if row['country'] in conversion:
+            return row['budget'] / conversion[row['country']]
+        else:
+            return (float('inf') / float('-inf')) # return not a number, will fill missing countries with average budget
+
+    data['budget'] = data.apply(update_currency, axis=1)
+
+    #data['budget_after_conversion'] = data['budget']
+
+    data['budget'].fillna(data['budget'].mean(), inplace=True)
+
 
 def delete_extra_columns(data):
     del data['color']
@@ -55,7 +111,6 @@ def delete_extra_columns(data):
     del data['plot_keywords']
     del data['movie_imdb_link']
     del data['num_user_for_reviews']
-    del data['title_year']
     del data['aspect_ratio']
     del data['gross']
     del data['num_voted_users']
@@ -99,6 +154,7 @@ def categorize_genres(data):
 
     del data['genres']
 
+
 def categorize_directors(data):
 
     # used to obtain director grouping
@@ -115,4 +171,16 @@ def categorize_directors(data):
 
     categorize(data, top_directors, 'director_name')
 
-data = read_to_dataframe('movie_metadata.csv')
+
+def load_data(file_name):
+    dataframe = read_to_dataframe(file_name)
+    
+    y = dataframe['imdb_score']
+    del dataframe['imdb_score']
+
+    x = np.array(dataframe)
+    y = np.array(y).reshape([x.shape[0], 1])
+
+    # TODO: split data into appropriate training / cross validation / testing tests
+
+    return (x, y)
