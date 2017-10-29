@@ -7,7 +7,7 @@ need: python3, pip3
 
 in this directory run:
 
-`pip3 install -r requirements`
+`pip3 install -r requirements.txt`
 
 # Documentation of Tools
 
