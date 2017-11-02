@@ -10,6 +10,12 @@ def read_to_dataframe(file_location):
     categorize_directors(data)
 
     adjust_budget(data)
+    
+    categorize_languages(data)
+    
+    categorize_rating(data)
+    
+    categorize_country(data)
 
     # TODO: other preprocessing
 
@@ -170,6 +176,34 @@ def categorize_directors(data):
     top_directors = [director for (director, _) in director_to_movies[0:50]]
 
     categorize(data, top_directors, 'director_name')
+    
+def categorize_country(data):
+    countries = ['USA','UK','New Zealand','Canada', 'Australia','Belgium','Japan','Germany','China','France','Mexico','Spain'
+            ,'Hong Kong','Czech Republic','India','Soviet Union','South Korea','Peru','Italy','Russia'
+            ,'Aruba','Denmark','Libya','Ireland','South Africa','Iceland','Switzerland','Romania'
+            ,'West Germany','Chile','Netherlands','Hungary','Panama','Greece','Sweden','Norway'
+            ,'Taiwan','Cambodia','Thailand','Slovakia','Bulgaria','Iran','Poland','Georgia','Turkey'
+            ,'Nigeria','Brazil','Finland','Bahamas','Argentina','Colombia','Israel','Egypt','Kyrgyzstan'
+            ,'Indonesia','Pakistan','Slovenia','Afghanistan','Dominican Republic','Cameroon','United Arab Emirates'
+            ,'Kenya','Philippines']
+
+    categorize(data, countries, 'country')
+
+
+def categorize_rating(data):
+    ratings = ['PG-13', 'PG', 'G', 'R', 'NC-17', 'X', 'M', 'Unrated', 'GP', 'Approved']
+
+    categorize(data, ratings, 'content_rating')
+
+def categorize_languages(data):
+    languages = ['Aboriginal', 'Arabic', 'Aramaic', 'Bosnian', 'Cantonese', 'Chinese', 'Czech',
+    'Danish', 'Dari', 'Dutch', 'Dzongkha', 'English', 'Filipino', 'French', 'German', 'Greek',
+     'Hebrew', 'Hindi', 'Hungarian', 'Icelandic', 'Indonesian', 'Italian', 'Japanese', 'Kannada',
+      'Kazakh', 'Korean', 'Mandarin', 'Maya', 'Mongolian', 'Norwegian', 'Panjabi', 'Persian',
+       'Polish', 'Portuguese', 'Romanian', 'Russian', 'Slovenian', 'Spanish', 'Swahili', 'Swedish', 'Tamil',
+        'Telugu', 'Thai', 'Urdu', 'Vietnamese', 'Zulu']
+
+    categorize(data, languages, 'language')
 
 
 def load_data(file_name):
