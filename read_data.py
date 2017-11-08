@@ -1,33 +1,24 @@
 import pandas as pd
 import numpy as np
 import sklearn as skl
+import math
 
 
 def read_to_dataframe(file_location):
     data = pd.read_csv(file_location, index_col=False)
 
     categorize_genres(data)
-
     categorize_directors(data)
-
     adjust_budget(data)
-
     adjust_duration(data)
-
     categorize_languages(data)
-
     categorize_rating(data)
-
     categorize_country(data)
-
     categorize_actor_1(data)
-
     categorize_actor_2(data)
-
     categorize_actor_3(data)
-
+    #bucket_imdb_score(data)
     adjust_imdb_score(data)
-
     delete_extra_columns(data)
 
     return data
@@ -39,6 +30,12 @@ def adjust_imdb_score(data):
     # scales to a range between zero and one, while still preserving distances/variance
     data['imdb_score'] = data['imdb_score'] / max_imdb_score
 
+# if we go with a catorizing model, this will need to be used
+def bucket_imdb_score(data):
+    def rount_to_nearest_half(score):
+        return round(score / .5) * .5
+
+    data['imdb_score'] = data['imdb_score'].apply(rount_to_nearest_half)
 
 def adjust_budget(data):
     convert_to_usd(data)
@@ -270,15 +267,31 @@ def categorize_languages(data):
     categorize(data, languages, 'language')
 
 
-def load_data(file_name):
+def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshape=False):
     dataframe = read_to_dataframe(file_name)
 
-    y = dataframe['imdb_score']
+    split_index = math.floor(len(dataframe) * train_percept) 
+
+    dataframe = skl.utils.shuffle(dataframe)
+
+    y_train = dataframe[:split_index]['imdb_score']
+    y_test  = dataframe[split_index:]['imdb_score']
     del dataframe['imdb_score']
+    
+    titles_train = [title for title in dataframe[:split_index]['movie_title']]
+    titles_test  = [title for title in dataframe[split_index:]['movie_title']]
+    del dataframe['movie_title']
+    
+    x_train = np.array(dataframe[:split_index])
+    x_test  = np.array(dataframe[split_index:])
 
-    x = np.array(dataframe)
-    y = np.array(y).reshape([x.shape[0], 1])
+    y_train = np.array(y_train)
+    y_test  = np.array(y_test)
+    
+    # some models expect thise to be a [x, 1] matrix while some expect them to
+    # be 1D
+    if reshape:
+        y_train = y_train.reshape([x_train.shape[0], 1])
+        y_test  = y_test.reshape([x_test.shape[0],  1])
 
-    # TODO: split data into appropriate training / cross validation / testing tests
-
-    return (x, y)
+    return (titles_train, x_train, y_train), (titles_test, x_test, y_test)
