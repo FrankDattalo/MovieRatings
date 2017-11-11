@@ -2,60 +2,240 @@ import pandas as pd
 import numpy as np
 import sklearn as skl
 import math
-
+import time
 
 def read_to_dataframe(file_location):
-    data = pd.read_csv(file_location, index_col=False)
+    data = pd.read_csv(file_location, index_col=False).dropna()
+    
+    age_to_see_movie(data)
+    data = historical_data(data)
+    movie_counts(data)
+    
+    inflation_adjustments(data)
+    adjust_duration(data)
 
     categorize_genres(data)
-    categorize_directors(data)
-    adjust_budget(data)
-    adjust_duration(data)
     categorize_languages(data)
-    categorize_rating(data)
     categorize_country(data)
-    categorize_actor_1(data)
-    categorize_actor_2(data)
-    categorize_actor_3(data)
-    #bucket_imdb_score(data)
-    adjust_imdb_score(data)
+
+    # #categorize_rating(data)
+    # #categorize_directors(data)
+    # #categorize_actor_1(data)
+    # #categorize_actor_2(data)
+    # #categorize_actor_3(data)
+
+    normalize_other_values(data)
+
     delete_extra_columns(data)
+    
+    return data
+
+def normalize_other_values(data):
+    cols_to_normalize = ['title_year', 'actor_1_name_past_mean_title_year', 
+                         'actor_2_name_past_mean_title_year', 'actor_3_name_past_mean_title_year',
+                         'director_name_past_mean_title_year', 'age_to_see_movie',
+                         'actor_1_name_past_mean_imdb_score', 'actor_2_name_past_mean_imdb_score',
+                         'actor_3_name_past_mean_imdb_score', 'director_name_past_mean_imdb_score',
+                         'director_name_previous_movie_count', 'actor_1_name_previous_movie_count',
+                         'actor_2_name_previous_movie_count', 'actor_3_name_previous_movie_count']
+
+    for col in cols_to_normalize:
+        zero_mean_unit_std(data, col)
+
+def zero_mean_unit_std(data, col):
+    data[col] = (data[col] - data[col].mean()) / data[col].std()
+
+def age_to_see_movie(data):
+    ratings = {'R': 17, 'PG-13': 13, 'PG': 10, 'G': 0, 'Not Rated': 18, 
+               'Unrated': 18, 'Approved': 0, 'X': 17, 'NC-17': 17, 
+               'Passed': 10, 'M': 17, 'GP': 10}
+
+    data['age_to_see_movie'] = data['content_rating'].apply(lambda rating: ratings[rating])
+
+def movie_counts(data):
+    start = time.time()
+
+    data_columns = ['movie_title', 'title_year']
+
+    temp1 = data[['actor_1_name', *data_columns]]
+    temp1.columns = ['person_name', *data_columns]
+
+    temp2 = data[['actor_2_name', *data_columns]]
+    temp2.columns = ['person_name', *data_columns]
+
+    temp3 = data[['actor_3_name', *data_columns]]
+    temp3.columns = ['person_name', *data_columns]
+
+    # data fraome of all actors, combining actors 1, 2, and 3
+    all_actors = pd.concat([temp1, temp2, temp3], axis=0)
+
+    all_directors = data[['director_name', *data_columns]]
+    all_directors.columns = ['person_name', *data_columns]
+
+    i = 0
+
+    def counting_fn(row, director_or_actor_name):
+        nonlocal i
+
+        if i % 400 == 0:
+            print("movie_counts() - Rows mapped", i // 4)
+
+        i += 1
+
+        if director_or_actor_name != 'director_name':
+            past = all_actors
+        else:
+            past = all_directors
+
+        past = past[past['title_year']  <= row['title_year']]
+        past = past[past['movie_title'] != row['movie_title']]
+        past = past[past['person_name'] == row[director_or_actor_name]]
+
+        return len(past)
+
+    for person_of_interest in ['director_name', 'actor_1_name', 'actor_2_name', 'actor_3_name']:
+        data[person_of_interest + '_previous_movie_count'] = \
+            data.apply(lambda row: counting_fn(row, person_of_interest), axis=1)
+
+    end = time.time()
+
+    print("movie_counts() - Total elapsed time in seconds:", (end - start))
+
+def historical_data(data):
+    # This function will assign the historical averages, mins, maxs, and medians
+    # of the following historical columns for each movie
+    # where person in {director, actor 1-3} in movie_x 
+    # and movie_x.title_year <= this_movie.title_year 
+
+    # btw, it also takes hella long to run (almost 3 minutes on my computer)
+
+    start = time.time()
+
+    historical_columns = ['imdb_score', 'gross', 'budget', 'title_year']
+    temp_columns = ['movie_title', *historical_columns]
+
+    # * means rest of arguments in python, unrolls list
+
+    temp1 = data[['actor_1_name', *temp_columns]]
+    temp1.columns = ['actor_name', *temp_columns]
+
+    temp2 = data[['actor_2_name', *temp_columns]]
+    temp2.columns = ['actor_name', *temp_columns]
+
+    temp3 = data[['actor_3_name', *temp_columns]]
+    temp3.columns = ['actor_name', *temp_columns]
+
+    # data fraome of all actors, combining actors 1, 2, and 3
+    all_actors = pd.concat([temp1, temp2, temp3], axis=0)
+
+    i = 0
+
+    def historical_fn(row):
+        nonlocal i
+        if i % 100 == 0:
+            print("historical_data() - Rows mapped", i)
+        i += 1
+
+        stats = {}
+
+        past = data[data['title_year'] <= row['title_year']]
+        # don't include the one we're trying to predict
+        past = past[past['movie_title'] != row['movie_title']]
+        director_stats = past[past['director_name'] == row['director_name']]
+
+        for col_name in historical_columns:
+            # if there are no historical statistics for this director up until this point
+            if len(director_stats) == 0:
+                # use the avaerage historical data instead
+                stats['director_name_past_mean_' + col_name] = past[col_name].mean()
+                stats['director_name_past_median_' + col_name] = past[col_name].median()
+                stats['director_name_past_max_' + col_name] = past[col_name].max()
+                stats['director_name_past_min_' + col_name] = past[col_name].min()
+                continue
+
+            stats['director_name_past_mean_' + col_name] = director_stats[col_name].mean()
+            stats['director_name_past_median_' + col_name] = director_stats[col_name].median()
+            stats['director_name_past_max_' + col_name] = director_stats[col_name].max()
+            stats['director_name_past_min_' + col_name] = director_stats[col_name].min()
+
+        past = all_actors[all_actors['title_year'] <= row['title_year']]
+        # don't include the one we're trying to predict
+        past = past[past['movie_title'] != row['movie_title']]
+        
+        for actor_x_name in ['actor_1_name', 'actor_2_name', 'actor_3_name']:
+            actor_stats = past[past['actor_name'] == row[actor_x_name]]
+
+            for col_name in historical_columns:
+                # use the overall statistics up until this point
+                if len(actor_stats) == 0:
+                    # use the average historical data instead
+                    stats[actor_x_name + '_past_mean_' + col_name] = past[col_name].mean()
+                    stats[actor_x_name + '_past_median_' + col_name] = past[col_name].median()
+                    stats[actor_x_name + '_past_max_' + col_name] = past[col_name].max()
+                    stats[actor_x_name + '_past_min_' + col_name] = past[col_name].min()
+                    continue
+                    
+                stats[actor_x_name + '_past_mean_' + col_name] = actor_stats[col_name].mean()
+                stats[actor_x_name + '_past_median_' + col_name] = actor_stats[col_name].median()
+                stats[actor_x_name + '_past_max_' + col_name] = actor_stats[col_name].max()
+                stats[actor_x_name + '_past_min_' + col_name] = actor_stats[col_name].min()
+        
+        stats['movie_title'] = row['movie_title']
+
+        return stats
+
+    data['stats'] = data.apply(historical_fn, axis=1)
+
+    for person in ['actor_1_name', 'actor_2_name', 'actor_3_name', 'director_name']:
+        for historical_column in historical_columns:
+            full_column_name = person + '_past_mean_' + historical_column
+            data[full_column_name] = data.apply(lambda row: row['stats'][full_column_name], axis=1)
+
+    del data['stats']
+
+    before = len(data)
+    data = data.dropna()
+    after = len(data)
+    # the difference should only be 1. 
+    # (the only movie that has no previous average and 
+    #  no previous historical data is the oldest movie in the database)
+    print("historical_data() - Dropping Na. Size before", before, "Size after", after)
+
+    end = time.time()
+
+    print("historical_data() - Total elapsed time in seconds:", round(end - start, 2))
 
     return data
 
+def inflation_adjustments(data):
+    data['title_year'].fillna(data['title_year'].mean(), inplace=True)
 
-def adjust_imdb_score(data):
-    max_imdb_score = 10
+    adjust_for_inflation(data, 'budget')
+    adjust_for_inflation(data, 'actor_1_name_past_mean_gross')
+    adjust_for_inflation(data, 'actor_1_name_past_mean_budget')
+    adjust_for_inflation(data, 'actor_2_name_past_mean_gross')
+    adjust_for_inflation(data, 'actor_2_name_past_mean_budget')
+    adjust_for_inflation(data, 'actor_3_name_past_mean_gross')
+    adjust_for_inflation(data, 'actor_3_name_past_mean_budget')
+    adjust_for_inflation(data, 'actor_3_name_past_mean_gross')
+    adjust_for_inflation(data, 'actor_3_name_past_mean_budget')
+    adjust_for_inflation(data, 'director_name_past_mean_gross')
+    adjust_for_inflation(data, 'director_name_past_mean_budget')
 
-    # scales to a range between zero and one, while still preserving distances/variance
-    data['imdb_score'] = data['imdb_score'] / max_imdb_score
-
-# if we go with a catorizing model, this will need to be used
-def bucket_imdb_score(data):
-    def rount_to_nearest_half(score):
-        return round(score / .5) * .5
-
-    data['imdb_score'] = data['imdb_score'].apply(rount_to_nearest_half)
-
-def adjust_budget(data):
+def adjust_for_inflation(data, col_name):
     convert_to_usd(data)
 
     # the average inflation rate over the last 100 years
     avg_inflation_rate = .0318
 
-    # fill data with missing values using means of columns
-    data['title_year'].fillna(data['title_year'].mean(), inplace=True)
-
     # used for inflation calculation
     this_year = 2017
 
     # adjust for future value of movie (inflation)
-    data['budget'] = data['budget'] * ((1 + avg_inflation_rate) ** (this_year - data['title_year']))
-
-    # data['budget_after_inflation_adjustment'] = data['budget']
+    data[col_name] = data[col_name] * ((1 + avg_inflation_rate) ** (this_year - data['title_year']))
 
     # scale to unit stddev and 0 mean
-    data['budget'] = (data['budget'] - data['budget'].mean()) / data['budget'].std()
+    zero_mean_unit_std(data, col_name)
 
 
 def convert_to_usd(data):
@@ -97,8 +277,7 @@ def convert_to_usd(data):
         if row['country'] in conversion:
             return row['budget'] / conversion[row['country']]
         else:
-            return (
-            float('inf') / float('-inf'))  # return not a number, will fill missing countries with average budget
+            return np.nan  # return not a number, will fill missing countries with average budget
 
     data['budget'] = data.apply(update_currency, axis=1)
 
@@ -111,26 +290,20 @@ def adjust_duration(data):
     # fill in empty values with mean
     data['duration'].fillna(data['duration'].mean(), inplace=True)
 
-    # scale
-    data['duration'] = (data['duration'] - data['duration'].mean()) / data['duration'].std()
+    zero_mean_unit_std(data, 'duration')
 
 
 def delete_extra_columns(data):
-    del data['color']
-    del data['num_critic_for_reviews']
-    del data['director_facebook_likes']
-    del data['actor_1_facebook_likes']
-    del data['actor_2_facebook_likes']
-    del data['actor_3_facebook_likes']
-    del data['cast_total_facebook_likes']
-    del data['movie_facebook_likes']
-    del data['facenumber_in_poster']
-    del data['plot_keywords']
-    del data['movie_imdb_link']
-    del data['num_user_for_reviews']
-    del data['aspect_ratio']
-    del data['gross']
-    del data['num_voted_users']
+    cols_to_delete = ['color', 'num_critic_for_reviews', 'director_facebook_likes', 
+                      'actor_1_facebook_likes', 'actor_2_facebook_likes', 'actor_3_facebook_likes',
+                      'cast_total_facebook_likes', 'movie_facebook_likes', 'facenumber_in_poster',
+                      'plot_keywords', 'movie_imdb_link', 'num_user_for_reviews',
+                      'aspect_ratio', 'gross', 'num_voted_users',
+                      'director_name', 'actor_1_name', 'actor_2_name', 'actor_3_name',
+                      'content_rating']
+
+    for col in cols_to_delete:
+        del data[col]
 
 
 def categorize(data, list_of_categories, column_to_categorize):
@@ -155,18 +328,9 @@ def categorize_genres(data):
     # data['genres'] is now a list of strings, for each genre, check if that genre is in the list
     data['genres'] = data['genres'].apply(lambda x: x.split('|'))
 
-    data['genre_is_unknown'] = True
-
     for genre in genres:
         genre_is_x = 'genre_is_' + genre
-        data[genre_is_x] = data['genres'].apply(lambda arr: genre in arr)
-
-        # things are unknown so long as they have not been found a genre
-        data['genre_is_unknown'] = data.apply(lambda row: row['genre_is_unknown'] and not row[genre_is_x], axis=1)
-
-        data[genre_is_x] = data[genre_is_x].astype(int)
-
-    data['genre_is_unknown'] = data['genre_is_unknown'].astype(int)
+        data[genre_is_x] = data['genres'].apply(lambda arr: genre in arr).astype(int)
 
     del data['genres']
 
@@ -225,27 +389,14 @@ def categorize_directors(data):
     g = data.groupby(['director_name'])
 
     # List of tuples of (director_name, count_of_movies) 
-    director_to_movies = [(director, len(movies)) for (director, movies) in g.groups.items()]
+    director_to_movies = {director: len(movies) for (director, movies) in g.groups.items()}
 
-    # sorts in descending order by count of movies
-    director_to_movies.sort(key=lambda x: x[1], reverse=True)
-
-    # top 50 directors by count of movies
-    top_directors = [director for (director, _) in director_to_movies[0:50]]
-
-    categorize(data, top_directors, 'director_name')
+    data['director_count'] = data['director_name'].apply(lambda director: director_to_movies[director])
 
 
 def categorize_country(data):
-    countries = ['USA', 'UK', 'New Zealand', 'Canada', 'Australia', 'Belgium', 'Japan', 'Germany', 'China', 'France',
-                 'Mexico', 'Spain'
-        , 'Hong Kong', 'Czech Republic', 'India', 'Soviet Union', 'South Korea', 'Peru', 'Italy', 'Russia'
-        , 'Aruba', 'Denmark', 'Libya', 'Ireland', 'South Africa', 'Iceland', 'Switzerland', 'Romania'
-        , 'West Germany', 'Chile', 'Netherlands', 'Hungary', 'Panama', 'Greece', 'Sweden', 'Norway'
-        , 'Taiwan', 'Cambodia', 'Thailand', 'Slovakia', 'Bulgaria', 'Iran', 'Poland', 'Georgia', 'Turkey'
-        , 'Nigeria', 'Brazil', 'Finland', 'Bahamas', 'Argentina', 'Colombia', 'Israel', 'Egypt', 'Kyrgyzstan'
-        , 'Indonesia', 'Pakistan', 'Slovenia', 'Afghanistan', 'Dominican Republic', 'Cameroon', 'United Arab Emirates'
-        , 'Kenya', 'Philippines']
+    countries = ['USA', 'UK', 'France', 'Germany', 'Canada', 'Australia', 
+                 'Spain', 'Japan', 'China', 'Hong Kong', 'New Zealand', 'Italy']
 
     categorize(data, countries, 'country')
 
@@ -257,12 +408,8 @@ def categorize_rating(data):
 
 
 def categorize_languages(data):
-    languages = ['Aboriginal', 'Arabic', 'Aramaic', 'Bosnian', 'Cantonese', 'Chinese', 'Czech',
-                 'Danish', 'Dari', 'Dutch', 'Dzongkha', 'English', 'Filipino', 'French', 'German', 'Greek',
-                 'Hebrew', 'Hindi', 'Hungarian', 'Icelandic', 'Indonesian', 'Italian', 'Japanese', 'Kannada',
-                 'Kazakh', 'Korean', 'Mandarin', 'Maya', 'Mongolian', 'Norwegian', 'Panjabi', 'Persian',
-                 'Polish', 'Portuguese', 'Romanian', 'Russian', 'Slovenian', 'Spanish', 'Swahili', 'Swedish', 'Tamil',
-                 'Telugu', 'Thai', 'Urdu', 'Vietnamese', 'Zulu']
+    languages = ['English', 'French', 'Spanish', 'Mandarin', 
+                 'German', 'Japanese', 'Cantonese', 'Italian']
 
     categorize(data, languages, 'language')
 
