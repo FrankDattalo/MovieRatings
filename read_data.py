@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
 import sklearn as skl
+import matplotlib.pyplot as plt
 import math
 import time
+import os
 
 def read_to_dataframe(file_location):
     data = pd.read_csv(file_location, index_col=False).dropna()
@@ -210,17 +212,14 @@ def historical_data(data):
 def inflation_adjustments(data):
     data['title_year'].fillna(data['title_year'].mean(), inplace=True)
 
-    adjust_for_inflation(data, 'budget')
-    adjust_for_inflation(data, 'actor_1_name_past_mean_gross')
-    adjust_for_inflation(data, 'actor_1_name_past_mean_budget')
-    adjust_for_inflation(data, 'actor_2_name_past_mean_gross')
-    adjust_for_inflation(data, 'actor_2_name_past_mean_budget')
-    adjust_for_inflation(data, 'actor_3_name_past_mean_gross')
-    adjust_for_inflation(data, 'actor_3_name_past_mean_budget')
-    adjust_for_inflation(data, 'actor_3_name_past_mean_gross')
-    adjust_for_inflation(data, 'actor_3_name_past_mean_budget')
-    adjust_for_inflation(data, 'director_name_past_mean_gross')
-    adjust_for_inflation(data, 'director_name_past_mean_budget')
+    cols_to_adjust = ['budget', 'actor_1_name_past_mean_gross', 'actor_1_name_past_mean_budget',
+                      'actor_2_name_past_mean_gross', 'actor_2_name_past_mean_budget', 
+                      'actor_3_name_past_mean_gross', 'actor_3_name_past_mean_budget',
+                      'actor_3_name_past_mean_gross', 'actor_3_name_past_mean_budget',
+                      'director_name_past_mean_gross', 'director_name_past_mean_budget']
+
+    for col in cols_to_adjust:
+        adjust_for_inflation(data, col)
 
 def adjust_for_inflation(data, col_name):
     convert_to_usd(data)
@@ -414,8 +413,18 @@ def categorize_languages(data):
     categorize(data, languages, 'language')
 
 
-def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshape=False):
-    dataframe = read_to_dataframe(file_name)
+def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshape=False, cache=True):
+    cache_save_location = file_name + '.pkl'
+    
+    if cache and os.path.exists(cache_save_location):
+        print('load_data() - Loading cached version.')
+        dataframe = pd.read_pickle(cache_save_location)
+    else:
+        print('load_data() - Computing dataframe.')
+        dataframe = read_to_dataframe(file_name)
+        if cache:
+            print('load_data() - Caching dataframe.')
+            dataframe.to_pickle(cache_save_location)
 
     split_index = math.floor(len(dataframe) * train_percept) 
 
@@ -442,3 +451,10 @@ def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshap
         y_test  = y_test.reshape([x_test.shape[0],  1])
 
     return (titles_train, x_train, y_train), (titles_test, x_test, y_test)
+
+
+def plot_histogram(data_location='./movie_metadata_update.csv'):
+    data_frame = pd.read_csv(data_location, index_col=False).dropna()
+    plt.hist(data_frame['imdb_score'])
+    plt.title('IMDB Score Distribution')
+    plt.show()
