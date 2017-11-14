@@ -33,13 +33,18 @@ def read_to_dataframe(file_location):
     return data
 
 def normalize_other_values(data):
-    cols_to_normalize = ['title_year', 'actor_1_name_past_mean_title_year', 
-                         'actor_2_name_past_mean_title_year', 'actor_3_name_past_mean_title_year',
-                         'director_name_past_mean_title_year', 'age_to_see_movie',
-                         'actor_1_name_past_mean_imdb_score', 'actor_2_name_past_mean_imdb_score',
-                         'actor_3_name_past_mean_imdb_score', 'director_name_past_mean_imdb_score',
-                         'director_name_previous_movie_count', 'actor_1_name_previous_movie_count',
+    historical_cols = ['imdb_score', 'gross', 'budget', 'title_year']
+    person_names = ['actor_1_name', 'actor_2_name', 'actor_3_name', 'director_name']
+    stats = ['_past_mean_', '_past_median_', '_past_max_', '_past_min_']
+
+    cols_to_normalize = ['title_year', 'age_to_see_movie', 'budget', 
+                         'director_name_previous_movie_count', 'actor_1_name_previous_movie_count', 
                          'actor_2_name_previous_movie_count', 'actor_3_name_previous_movie_count']
+
+    for historical_col in historical_cols:
+        for person_name in person_names:
+            for stat in stats:
+                cols_to_normalize.append(person_name + stat + historical_col)
 
     for col in cols_to_normalize:
         zero_mean_unit_std(data, col)
@@ -159,7 +164,7 @@ def historical_data(data):
             stats['director_name_past_median_' + col_name] = director_stats[col_name].median()
             stats['director_name_past_max_' + col_name] = director_stats[col_name].max()
             stats['director_name_past_min_' + col_name] = director_stats[col_name].min()
-
+            
         past = all_actors[all_actors['title_year'] <= row['title_year']]
         # don't include the one we're trying to predict
         past = past[past['movie_title'] != row['movie_title']]
@@ -181,22 +186,21 @@ def historical_data(data):
                 stats[actor_x_name + '_past_median_' + col_name] = actor_stats[col_name].median()
                 stats[actor_x_name + '_past_max_' + col_name] = actor_stats[col_name].max()
                 stats[actor_x_name + '_past_min_' + col_name] = actor_stats[col_name].min()
-        
-        stats['movie_title'] = row['movie_title']
-
+                
         return stats
 
     data['stats'] = data.apply(historical_fn, axis=1)
 
     for person in ['actor_1_name', 'actor_2_name', 'actor_3_name', 'director_name']:
         for historical_column in historical_columns:
-            full_column_name = person + '_past_mean_' + historical_column
-            data[full_column_name] = data.apply(lambda row: row['stats'][full_column_name], axis=1)
+            for _past_x_ in ['_past_mean_', '_past_median_', '_past_max_', '_past_min_']:
+                full_column_name = person + _past_x_ + historical_column
+                data[full_column_name] = data.apply(lambda row: row['stats'][full_column_name], axis=1)
 
     del data['stats']
 
     before = len(data)
-    data = data.dropna()
+    #data = data.dropna()
     after = len(data)
     # the difference should only be 1. 
     # (the only movie that has no previous average and 
@@ -212,11 +216,16 @@ def historical_data(data):
 def inflation_adjustments(data):
     data['title_year'].fillna(data['title_year'].mean(), inplace=True)
 
-    cols_to_adjust = ['budget', 'actor_1_name_past_mean_gross', 'actor_1_name_past_mean_budget',
-                      'actor_2_name_past_mean_gross', 'actor_2_name_past_mean_budget', 
-                      'actor_3_name_past_mean_gross', 'actor_3_name_past_mean_budget',
-                      'actor_3_name_past_mean_gross', 'actor_3_name_past_mean_budget',
-                      'director_name_past_mean_gross', 'director_name_past_mean_budget']
+    cols_to_adjust = ['budget']
+
+    historical_cols = ['gross', 'budget']
+    person_names = ['actor_1_name', 'actor_2_name', 'actor_3_name', 'director_name']
+    stats = ['_past_mean_', '_past_median_', '_past_max_', '_past_min_']
+
+    for historical_col in historical_cols:
+        for person_name in person_names:
+            for stat in stats:
+                cols_to_adjust.append(person_name + stat + historical_col)
 
     for col in cols_to_adjust:
         adjust_for_inflation(data, col)
@@ -232,10 +241,6 @@ def adjust_for_inflation(data, col_name):
 
     # adjust for future value of movie (inflation)
     data[col_name] = data[col_name] * ((1 + avg_inflation_rate) ** (this_year - data['title_year']))
-
-    # scale to unit stddev and 0 mean
-    zero_mean_unit_std(data, col_name)
-
 
 def convert_to_usd(data):
     # usd / coversion currency
@@ -413,7 +418,7 @@ def categorize_languages(data):
     categorize(data, languages, 'language')
 
 
-def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshape=False, cache=True):
+def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshape=False, cache=True, process=True):
     cache_save_location = file_name + '.pkl'
     
     if cache and os.path.exists(cache_save_location):
@@ -425,6 +430,9 @@ def load_data(file_name='./movie_metadata_update.csv', train_percept=.75, reshap
         if cache:
             print('load_data() - Caching dataframe.')
             dataframe.to_pickle(cache_save_location)
+
+    if not process:
+        return dataframe
 
     split_index = math.floor(len(dataframe) * train_percept) 
 
