@@ -200,7 +200,7 @@ def historical_data(data):
     del data['stats']
 
     before = len(data)
-    #data = data.dropna()
+    data = data.dropna()
     after = len(data)
     # the difference should only be 1. 
     # (the only movie that has no previous average and 
