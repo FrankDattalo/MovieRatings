@@ -6,6 +6,8 @@ import math
 import time
 import os
 
+# This function is responsible for loading and processing the file into a 
+# pandas data frame
 def read_to_dataframe(file_location):
     data = pd.read_csv(file_location, index_col=False).dropna()
     
@@ -81,6 +83,19 @@ def movie_counts(data):
 
     i = 0
 
+    # This code expressed as SQL:
+    #
+    # SELECT COUNT(*)
+    # FROM MOVIES
+    # WHERE TITLE_YEAR <= :TITLE_YEAR
+    # AND   DIRECTOR_NAME = :DIRECTOR_NAME
+    # AND   MOVIE_TITLE != :MOVIE_TITLE
+    # 
+    # SELECT COUNT(*)
+    # FROM MOViES
+    # WHERE TITLE_YEAR <= :TITLE_YEAR
+    # AND   ACTOR_NAME = :ACTOR_NAME
+    # AND   MOVIE_TITLE != :MOVIE_TITLE
     def counting_fn(row, director_or_actor_name):
         nonlocal i
 
@@ -135,8 +150,17 @@ def historical_data(data):
     # data fraome of all actors, combining actors 1, 2, and 3
     all_actors = pd.concat([temp1, temp2, temp3], axis=0)
 
+    # used for printing
     i = 0
 
+    # This code as SQL
+    # SELECT MIN(BUDGET), MAX(BUDGET), MEDIAN(BUDGET), MEAN(BUDGET), etc..
+    # FROM MOVIES
+    # WHERE TITLE_YEAR <= :TITLE_YEAR
+    # AND   MOVIE_TITLE != :MOVIE_TITLE
+    # AND   DIRECTOR_NAME = :DIRECTOR_NAME
+    # (note this code also maps values for actors and will use averages of all
+    #  if none for that specific actor or director is found)
     def historical_fn(row):
         nonlocal i
         if i % 100 == 0:
@@ -189,14 +213,21 @@ def historical_data(data):
                 
         return stats
 
+    # used as a temp column, which will store a map of variables.
+    # It's currently done this way in order to speed up performance.
+    # Rather than calling a function to collect statistics for each column individually,
+    # They are all done in historical_fn and then parsed out in the loop below
     data['stats'] = data.apply(historical_fn, axis=1)
 
+    # split the stats map into it's respective columns by grabbing what is needed
+    # from the map at each row
     for person in ['actor_1_name', 'actor_2_name', 'actor_3_name', 'director_name']:
         for historical_column in historical_columns:
             for _past_x_ in ['_past_mean_', '_past_median_', '_past_max_', '_past_min_']:
                 full_column_name = person + _past_x_ + historical_column
                 data[full_column_name] = data.apply(lambda row: row['stats'][full_column_name], axis=1)
 
+    # remove the temporary column
     del data['stats']
 
     before = len(data)
