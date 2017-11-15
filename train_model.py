@@ -4,8 +4,6 @@ from sklearn.linear_model import ElasticNet
 # Next, we will import a class used for cross validation (hyper parameter selection)
 from sklearn.model_selection import GridSearchCV
 
-from sklearn.preprocessing import PolynomialFeatures
-
 # Then, we will import metrics to test our trained model
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
@@ -23,6 +21,8 @@ loader.plot_histogram()
 (titles_train, x_train, y_train), (titles_test, x_test, y_test) = loader.load_data()
 
 # Here we will instatiate a model to train. 
+classifier = ElasticNet()
+
 # GridSearchCV will select the best model after exaustivly 
 # trying all of the parameters within the map given as a parameter.
 # Therefore, the map corresponds to the hyper parameters passed into the model.
@@ -30,8 +30,9 @@ loader.plot_histogram()
 # change when the model changes.
 # n_jobs - the number of jobs to run in parallel
 # verbose - debug printing 
-model = GridSearchCV(ElasticNet(), 
-                    {'l1_ratio': [0, .25, .5, .75, 1], 'alpha': [.01, .5, 1, 1.5, 2]},
+model = GridSearchCV(classifier,
+                    {'l1_ratio': [0, .25, .5, .75, 1], 
+                     'alpha': [.01, .5, 1, 1.5, 2]},
                     verbose=2, n_jobs=16)
 
 # Actual training is done within this method.
